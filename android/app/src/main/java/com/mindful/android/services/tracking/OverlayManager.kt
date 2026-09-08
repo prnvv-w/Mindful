@@ -77,6 +77,7 @@ class OverlayManager(
         packageName: String,
         restrictionState: RestrictionState,
         addReminderWithDelay: ((futureMinutes: Int) -> Unit)? = null,
+        cooldownSeconds: Int = 0,
     ) {
         // Return if overlay is not null
         if (overlays.isNotEmpty()) return
@@ -99,6 +100,7 @@ class OverlayManager(
                     state = restrictionState,
                     dismissOverlay = ::dismissSheetOverlay,
                     addReminderDelay = addReminderWithDelay,
+                    cooldownSeconds = cooldownSeconds,
                 ).apply {
                     // TODO: Fix the deprecated logic
                     // Full screen edge to edge view
