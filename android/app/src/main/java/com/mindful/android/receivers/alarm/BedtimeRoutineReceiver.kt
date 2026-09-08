@@ -35,6 +35,8 @@ import com.mindful.android.services.tracking.MindfulTrackerService
 import com.mindful.android.utils.AppUtils
 import com.mindful.android.utils.DateTimeUtils
 import com.mindful.android.utils.ThreadUtils
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class BedtimeRoutineReceiver : BroadcastReceiver() {
     companion object {
@@ -48,10 +50,10 @@ class BedtimeRoutineReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             ACTION_ALERT_BEDTIME, ACTION_START_BEDTIME, ACTION_STOP_BEDTIME -> {
-                /// Schedule worker
+                /// Schedule worker with REPLACE policy so alarms are never dropped
                 WorkManager.getInstance(context).enqueueUniqueWork(
-                    TAG,
-                    ExistingWorkPolicy.KEEP,
+                    "${TAG}_${System.currentTimeMillis()}",
+                    ExistingWorkPolicy.REPLACE,
                     OneTimeWorkRequest.Builder(BedtimeRoutineWorker::class.java)
                         .setInputData(
                             Data.Builder()
@@ -83,7 +85,6 @@ class BedtimeRoutineReceiver : BroadcastReceiver() {
             serviceClass = MindfulTrackerService::class.java
         )
 
-
         override fun doWork(): Result {
             try {
                 val action = inputData.getString("action")
@@ -108,21 +109,28 @@ class BedtimeRoutineReceiver : BroadcastReceiver() {
                 Log.e(TAG, "doWork: Error during work execution", e)
                 SharedPrefsHelper.insertCrashLogToPrefs(context, e)
                 return Result.failure()
-            } finally {
-                // Unbind service
-                trackerServiceConn.unBindService()
             }
         }
 
         private fun startBedtimeRoutine() {
             if (!canStartRoutineToday) return
+
+            val latch = CountDownLatch(1)
             trackerServiceConn.setOnConnectedCallback { service: MindfulTrackerService ->
                 with(service) {
                     getRestrictionManager.updateBedtimeApps(bedtimeSchedule.distractingApps)
                     getLaunchTrackingManager.detectActiveAppForBedtime()
                 }
+                latch.countDown()
             }
             trackerServiceConn.startAndBind()
+
+            // Wait up to 5 seconds for service connection to complete before finishing worker
+            try {
+                latch.await(5, TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Log.e(TAG, "startBedtimeRoutine: Latch interrupted", e)
+            }
 
             // Start DND if needed
             if (bedtimeSchedule.shouldStartDnd) NotificationHelper.toggleDnd(
@@ -134,12 +142,18 @@ class BedtimeRoutineReceiver : BroadcastReceiver() {
         }
 
         private fun stopBedtimeRoutine() {
+            val latch = CountDownLatch(1)
             trackerServiceConn.setOnConnectedCallback { service: MindfulTrackerService ->
-                service.getRestrictionManager.updateBedtimeApps(
-                    null
-                )
+                service.getRestrictionManager.updateBedtimeApps(null)
+                latch.countDown()
             }
             trackerServiceConn.bindService()
+
+            try {
+                latch.await(5, TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Log.e(TAG, "stopBedtimeRoutine: Latch interrupted", e)
+            }
 
             // Stop DND if needed
             if (bedtimeSchedule.shouldStartDnd) NotificationHelper.toggleDnd(
@@ -149,7 +163,6 @@ class BedtimeRoutineReceiver : BroadcastReceiver() {
             )
             pushAlertNotification(context.getString(R.string.bedtime_ended_notification_info))
         }
-
 
         private fun pushAlertNotification(alert: String) {
             val notificationManager =
@@ -176,5 +189,5 @@ class BedtimeRoutineReceiver : BroadcastReceiver() {
             )
         }
     }
-
 }
+
