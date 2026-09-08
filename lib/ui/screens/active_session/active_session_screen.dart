@@ -38,6 +38,9 @@ import 'package:mindful/ui/transitions/default_hero.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
+// 🔥 APNA CUSTOM TIMER FILE IMPORT 🔥
+import 'package:mindful/timer_dialog.dart'; 
+
 class ActiveSessionScreen extends ConsumerStatefulWidget {
   const ActiveSessionScreen({super.key});
 
@@ -63,6 +66,29 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
         _launchConfetti();
       },
     );
+
+    // =========================================================
+    // 🔥 APNA SAFE TIMER INJECTION (NO BEDTIME CONFLICT) 🔥
+    // =========================================================
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final session = ref.read(focusModeProvider).activeSession.value;
+      
+      // Check: Agar session type me 'bedtime' ya 'sleep' NAHI hai, toh hi timer dialog dikhao
+      if (session != null && 
+          !session.type.toString().toLowerCase().contains('bedtime') &&
+          !session.type.toString().toLowerCase().contains('sleep')) {
+        
+        showDialog(
+          context: context,
+          barrierDismissible: false, // Screen ke bahar click karke bypass karne ka loophole band
+          builder: (context) => const ActiveTimerDialog(
+            appName: "this App", 
+            remainingQuotaMinutes: 40, // Abhi fallback 40 mins rakha hai testing ke liye
+          ),
+        );
+      }
+    });
+    // =========================================================
   }
 
   /// This callback will be after a frame is rendered only when
