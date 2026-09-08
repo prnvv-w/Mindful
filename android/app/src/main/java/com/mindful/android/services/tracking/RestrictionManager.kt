@@ -79,7 +79,7 @@ class RestrictionManager(
 
         // returns nearest time stamp for rechecking
     fun isAppRestricted(packageName: String): RestrictionState? {
-        // 🔥 1. LIVE BEDTIME LIST EVALUATION
+               // 🔥 1. LIVE BEDTIME LIST EVALUATION
         try {
             val bedtimeSchedule = SharedPrefsHelper.getSetBedtimeSettings(context, null)
             if (bedtimeSchedule != null && bedtimeSchedule.isEnabled) {
@@ -87,12 +87,13 @@ class RestrictionManager(
                 val isTodayActive = bedtimeSchedule.scheduleDays.getOrNull(DateTimeUtils.zeroIndexedDayOfWeek()) ?: false
 
                 if (isInBedtimeList && isTodayActive) {
-                    val nowTod = DateTimeUtils.currentTodMinutes()
+                    val cal = java.util.Calendar.getInstance()
+                    val nowTod = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
                     val start = bedtimeSchedule.scheduleStartTime
                     val end = (start + bedtimeSchedule.scheduleDurationInMins) % 1440
 
                     val isBedtimeActiveNow = if (start <= end) {
-                        nowTod in start until end
+                        nowTod >= start && nowTod < end
                     } else {
                         // Midnight cross (jaise raat 11 PM se subah 6 AM)
                         nowTod >= start || nowTod < end
@@ -109,6 +110,10 @@ class RestrictionManager(
                     }
                 }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error evaluating live bedtime settings", e)
+        }
+
         } catch (e: Exception) {
             Log.e(TAG, "Error evaluating live bedtime settings", e)
         }
