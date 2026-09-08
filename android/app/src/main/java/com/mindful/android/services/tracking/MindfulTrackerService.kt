@@ -123,7 +123,7 @@ class MindfulTrackerService : Service() {
         activePackageName = null
     }
 
-    @WorkerThread
+        @WorkerThread
     private fun onNewAppLaunch(packageName: String) {
         try {
             reminderManager.cancelReminders()
@@ -143,25 +143,36 @@ class MindfulTrackerService : Service() {
             Log.d(TAG, "onNewAppLaunch: $packageName's evaluated state => $currentOrFutureState")
 
             currentOrFutureState?.let { state ->
-                /// 1. HARD BLOCK: Bedtime, Focus Mode ya Quota pura 0 ho gaya
-                if (state.type == RestrictionType.BEDTIME ||
-                    state.type == RestrictionType.FOCUS ||
-                    state.timeLeftMillis <= 0L
-                ) {
+                /// 🔥 1. BEDTIME & FOCUS PRIORITY (Active session ko override karega)
+                if (state.type == RestrictionType.BEDTIME || state.type == RestrictionType.FOCUS) {
+                    allowedUntilMap.remove(packageName)
+                    sessionStartMap.remove(packageName)
+                    allocatedMinutesMap.remove(packageName)
+
                     overlayManager.showSheetOverlay(
                         packageName = packageName,
                         restrictionState = state,
-                        addReminderWithDelay = null, // No timer buttons
+                        addReminderWithDelay = null, // Bedtime me options nahi milenge
                     )
                     return
                 }
 
-                /// 2. ACTIVE SESSION: Agar user ne pehle se select kiya hai aur time chal raha hai
+                /// 2. ACTIVE SESSION: Sirf normal usage ke waqt active session chalne do
                 if (isSessionActive) {
                     return
                 }
 
-                /// 3. GATEKEEPER PROMPT: Har launch pe overlay dikhao aur session maango
+                /// 3. NORMAL QUOTA EXHAUSTED: Agar daily limit khatam ho chuki hai
+                if (state.timeLeftMillis <= 0L && state.screenTimeLimit > 0 && state.screenTimeUsed >= state.screenTimeLimit) {
+                    overlayManager.showSheetOverlay(
+                        packageName = packageName,
+                        restrictionState = state,
+                        addReminderWithDelay = null,
+                    )
+                    return
+                }
+
+                /// 4. GATEKEEPER PROMPT: Har launch pe 10s cooldown + session selector
                 val cooldownSec = getCooldownRemainingSeconds(packageName)
 
                 overlayManager.dismissSheetOverlay()
@@ -177,7 +188,7 @@ class MindfulTrackerService : Service() {
                         allocatedMinutesMap[packageName] = futureMinutes
                         allowedUntilMap[packageName] = now + sessionDurationMs
 
-                        // 🔥 1-MINUTE WARNING NUDGE: Agar session 2 minute se bada hai, toh theek 1 minute pehle toast dikhao
+                        // 🔥 1-MINUTE WARNING NUDGE
                         if (futureMinutes > 1) {
                             val warningDelayMs = sessionDurationMs - (60 * 1000L)
                             sessionHandler.postDelayed({
@@ -208,6 +219,7 @@ class MindfulTrackerService : Service() {
             Log.e(TAG, "onNewAppLaunch: Failed to process new app launch event", e)
         }
     }
+
 
     private fun stopIfNoUsage() {
         if (restrictionManager.isIdle) {
