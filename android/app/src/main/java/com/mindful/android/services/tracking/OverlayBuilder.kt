@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.os.CountDownTimer
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
@@ -71,6 +72,7 @@ object OverlayBuilder {
         state: RestrictionState,
         dismissOverlay: () -> Unit,
         addReminderDelay: ((futureMinutes: Int) -> Unit)? = null,
+        cooldownSeconds: Int = 0,
     ): View {
         // Inflate the custom layout for the dialog
         val inflater = LayoutInflater.from(context)
@@ -134,8 +136,9 @@ object OverlayBuilder {
         )
 
         // Limit information
+        val defaultLimitInfo = getRestrictionInfo(context, state)
         val limitInfo = sheetView.findViewById<TextView>(R.id.overlay_sheet_limit_info)
-        limitInfo.text = getRestrictionInfo(context, state)
+        limitInfo.text = defaultLimitInfo
 
         // Limit progress, and use more layout
         if (state.screenTimeLimit > 0 && state.screenTimeUsed >= 0) {
@@ -169,6 +172,8 @@ object OverlayBuilder {
                     sheetView.findViewById<LinearLayout>(R.id.overlay_sheet_limit_options_use_more)
                 useMoreOptions.visibility = View.VISIBLE
 
+                val timerButtons = mutableListOf<Button>()
+
                 // Iterate over reminders and the button ids map and set click listener
                 // and make them visible if the left limit is more than the specified reminder time
                 addReminderDelay?.let { callback ->
@@ -178,16 +183,33 @@ object OverlayBuilder {
                         10 to R.id.overlay_sheet_reminder_option_btn_ten_mins,
                         20 to R.id.overlay_sheet_reminder_option_btn_twenty_mins
                     ).forEach { (reminder, btnId) ->
-                        // Always show 2 minute option if left minutes > 0
+                        // Always show option if left minutes >= reminder
                         if (leftLimitMins >= reminder) {
                             val button = sheetView.findViewById<Button>(btnId)
                             button.visibility = View.VISIBLE
+                            timerButtons.add(button)
                             button.setOnClickListener {
                                 callback(reminder)
                                 dismissOverlay.invoke()
                             }
                         }
                     }
+                }
+
+                // 🔥 LAUNCH COOLDOWN PENALTY: 10s friction wait agar user exit karke turant wapas aaya
+                if (cooldownSeconds > 0) {
+                    timerButtons.forEach { it.isEnabled = false }
+                    object : CountDownTimer(cooldownSeconds * 1000L, 1000L) {
+                        override fun onTick(millisUntilFinished: Long) {
+                            val secondsRemaining = (millisUntilFinished / 1000) + 1
+                            limitInfo.text = "⏳ Cooldown active: Wait ${secondsRemaining}s..."
+                        }
+
+                        override fun onFinish() {
+                            limitInfo.text = defaultLimitInfo
+                            timerButtons.forEach { it.isEnabled = true }
+                        }
+                    }.start()
                 }
             }
         }
@@ -210,7 +232,6 @@ object OverlayBuilder {
 
         return sheetView
     }
-
 
     fun getAppLabelAndIcon(
         context: Context,
