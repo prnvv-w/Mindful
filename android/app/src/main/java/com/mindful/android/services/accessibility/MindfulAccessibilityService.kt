@@ -134,14 +134,31 @@ class MindfulAccessibilityService : AccessibilityService(), OnSharedPreferenceCh
         super.onServiceConnected()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        override fun onAccessibilityEvent(event: AccessibilityEvent) {
         try {
             // If not desired event or executor is shutdown, then just return
             if (!desiredEvents.contains(event.eventType) || executorService.isShutdown) return
 
+            val eventPackageName = event.packageName?.toString() ?: ""
+
+            // 🔥 TAMPER PROTECTION HARD-LOCK: Prevent access to Device Admin settings
+            if (eventPackageName == SETTINGS_PACKAGE || eventPackageName.contains("packageinstaller")) {
+                val rootNode = rootInActiveWindow ?: event.source
+                if (rootNode != null && isTamperScreen(rootNode)) {
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    ThreadUtils.runOnMainThread {
+                        Toast.makeText(
+                            this@MindfulAccessibilityService,
+                            "⚠️ Tamper Protection: Device Admin cannot be modified!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return
+                }
+            }
+
             executorService.submit {
                 // Determine package and event source node
-                val eventPackageName = event.packageName.toString()
                 val node = if (eventPackageName == REDDIT_PACKAGE) event.source
                 else rootInActiveWindow ?: event.source
 
@@ -163,6 +180,42 @@ class MindfulAccessibilityService : AccessibilityService(), OnSharedPreferenceCh
         } catch (ignored: Exception) {
         }
     }
+
+    /**
+     * Recursively checks if current screen is trying to access Device Admin / Mindful app details
+     */
+    private fun isTamperScreen(node: AccessibilityNodeInfo): Boolean {
+        val text = node.text?.toString()?.lowercase() ?: ""
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        val viewId = node.viewIdResourceName?.lowercase() ?: ""
+
+        val triggers = listOf(
+            "device admin",
+            "admin apps",
+            "device admin apps",
+            "deactivate",
+            "uninstall unsuccessful",
+            "all apps",
+            "modify system settings"
+        )
+
+        // Agar screen par 'mindful' ke saath koi admin/uninstall ka word match ho
+        if (triggers.any { text.contains(it) || desc.contains(it) || viewId.contains(it) }) {
+            val hasMindful = text.contains("mindful") || desc.contains("mindful")
+            if (hasMindful || text.contains("device admin") || desc.contains("device admin")) {
+                return true
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (isTamperScreen(child)) {
+                return true
+            }
+        }
+        return false
+    }
+
 
     /**
      * Processes accessibility event in background thread instead of main thread.
