@@ -86,17 +86,18 @@ class RestrictionManager(
                 val isInBedtimeList = bedtimeSchedule.distractingApps.contains(packageName)
                 val isTodayActive = bedtimeSchedule.scheduleDays.getOrNull(DateTimeUtils.zeroIndexedDayOfWeek()) ?: false
 
-                if (isInBedtimeList && isTodayActive) {
+                                if (isInBedtimeList && isTodayActive) {
                     val cal = java.util.Calendar.getInstance()
-                    val nowTod = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-                    val start = bedtimeSchedule.scheduleStartTime
-                    val end = (start + bedtimeSchedule.scheduleDurationInMins) % 1440
+                    val nowTod: Int = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+                    val start: Int = bedtimeSchedule.scheduleStartTime.toInt()
+                    val end: Int = (start + bedtimeSchedule.scheduleDurationInMins.toInt()) % 1440
 
                     val isBedtimeActiveNow = if (start <= end) {
                         nowTod >= start && nowTod < end
                     } else {
                         nowTod >= start || nowTod < end
                     }
+
 
                     if (isBedtimeActiveNow) {
                         Log.d(TAG, "isAppRestricted: Bedtime ACTIVE for package: $packageName")
