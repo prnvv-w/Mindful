@@ -45,9 +45,13 @@ class OverlayManager(
         overlays.pollFirst()?.let { sheetOverlay ->
             ThreadUtils.runOnMainThread {
 
+                // Overlay hatne par volume wapas on karo
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-                @Suppress("DEPRECATION")
-                audioManager.abandonAudioFocus(null)
+                audioManager.adjustStreamVolume(
+                    android.media.AudioManager.STREAM_MUSIC,
+                    android.media.AudioManager.ADJUST_UNMUTE,
+                    0
+                )
                 
                 // Get views
                 val bg = sheetOverlay.findViewById<View>(R.id.overlay_background)
@@ -80,29 +84,13 @@ class OverlayManager(
         ThreadUtils.runOnMainThread {
             runCatching {
 
-               // Mute background reel audio instantly
+               // Reel audio ko turant system level par mute karo
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-                
-                @Suppress("DEPRECATION")
-                val focusListener = android.media.AudioManager.OnAudioFocusChangeListener { }
-
-                @Suppress("DEPRECATION")
-                audioManager.requestAudioFocus(
-                    focusListener,
+                audioManager.adjustStreamVolume(
                     android.media.AudioManager.STREAM_MUSIC,
-                    android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
+                    android.media.AudioManager.ADJUST_MUTE,
+                    0
                 )
-
-                // Extra safety: 300ms baad wapas focus snatch taaki Instagram player post-launch audio na chalaye
-                Handler(Looper.getMainLooper()).postDelayed({
-                    @Suppress("DEPRECATION")
-                    audioManager.requestAudioFocus(
-                        focusListener,
-                        android.media.AudioManager.STREAM_MUSIC,
-                        android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
-                    )
-                }, 300L)
-
                 
                 // Build overlay
                 val sheetOverlay = OverlayBuilder.buildFullScreenOverlay(
