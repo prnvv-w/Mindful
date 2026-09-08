@@ -80,19 +80,30 @@ class OverlayManager(
         ThreadUtils.runOnMainThread {
             runCatching {
 
-                // Mute background reel audio instantly
+               // Mute background reel audio instantly
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                
+                @Suppress("DEPRECATION")
+                val focusListener = android.media.AudioManager.OnAudioFocusChangeListener { }
+
                 @Suppress("DEPRECATION")
                 audioManager.requestAudioFocus(
-                    null,
+                    focusListener,
                     android.media.AudioManager.STREAM_MUSIC,
-                    android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                    android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
                 )
-                // Notify, stop and return if don't have overlay permission
-                if (!haveOverlayPermission(context)) {
-                    return@runOnMainThread
-                }
 
+                // Extra safety: 300ms baad wapas focus snatch taaki Instagram player post-launch audio na chalaye
+                Handler(Looper.getMainLooper()).postDelayed({
+                    @Suppress("DEPRECATION")
+                    audioManager.requestAudioFocus(
+                        focusListener,
+                        android.media.AudioManager.STREAM_MUSIC,
+                        android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
+                    )
+                }, 300L)
+
+                
                 // Build overlay
                 val sheetOverlay = OverlayBuilder.buildFullScreenOverlay(
                     context = context,
