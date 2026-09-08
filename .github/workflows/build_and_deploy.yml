@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    name: Build Release APK
+    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
@@ -28,11 +28,10 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation
+        run: flutter build apk --debug --android-skip-build-dependency-validation
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: mindful-custom-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          
+          path: build/app/outputs/flutter-apk/app-debug.apk
