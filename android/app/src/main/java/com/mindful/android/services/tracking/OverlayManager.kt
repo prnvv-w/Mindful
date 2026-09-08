@@ -107,10 +107,9 @@ class OverlayManager(
                     val sheet = sheetOverlay.findViewById<LinearLayout>(R.id.overlay_sheet)
 
                     // Set initial
-                    bg.alpha = 0f
-                    quote.alpha = 0f
-                    sheet.translationY = SLIDE_UP_START_Y
-
+                    bg.alpha = 1f
+                    quote.alpha = 1f
+                    sheet.translationY = 0f
                     // Animate
                     bg.animate().alpha(1f).setDuration(400).start()
                     quote.animate().alpha(1f).setDuration(400).start()
@@ -224,11 +223,10 @@ class OverlayManager(
             } else {
                 WindowManager.LayoutParams.TYPE_PHONE
             },
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR,
-            android.graphics.PixelFormat.TRANSLUCENT
+            android.graphics.PixelFormat.OPAQUE
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         }
