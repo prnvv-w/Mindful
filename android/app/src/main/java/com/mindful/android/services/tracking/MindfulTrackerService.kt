@@ -163,6 +163,20 @@ class MindfulTrackerService : Service() {
                         allocatedMinutesMap[packageName] = futureMinutes
                         allowedUntilMap[packageName] = now + sessionDurationMs
 
+                        // 🔥 1-MINUTE WARNING NUDGE: Agar session 2 minute se bada hai, toh theek 1 minute pehle toast dikhao
+                        if (futureMinutes > 1) {
+                            val warningDelayMs = sessionDurationMs - (60 * 1000L)
+                            sessionHandler.postDelayed({
+                                if (allowedUntilMap.containsKey(packageName)) {
+                                    android.widget.Toast.makeText(
+                                        this@MindfulTrackerService,
+                                        "⚠️ 1 minute bacha hai, wrap up kar!",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }, warningDelayMs)
+                        }
+
                         // Timer pura hote hi wapas overlay trigger hoga
                         sessionHandler.postDelayed({
                             allowedUntilMap.remove(packageName)
