@@ -10,6 +10,7 @@ import com.mindful.android.models.AppRestriction
 import com.mindful.android.models.RestrictionGroup
 import com.mindful.android.models.RestrictionState
 import com.mindful.android.utils.DateTimeUtils
+import com.mindful.android.helpers.storage.SharedPrefsHelper
 
 class RestrictionManager(
     private val context: Context,
@@ -76,13 +77,48 @@ class RestrictionManager(
     }
 
 
-    // returns nearest time stamp for rechecking
+        // returns nearest time stamp for rechecking
     fun isAppRestricted(packageName: String): RestrictionState? {
+        // 🔥 1. LIVE BEDTIME LIST EVALUATION
+        try {
+            val bedtimeSchedule = SharedPrefsHelper.getSetBedtimeSettings(context, null)
+            if (bedtimeSchedule != null && bedtimeSchedule.isEnabled) {
+                val isInBedtimeList = bedtimeSchedule.distractingApps.contains(packageName)
+                val isTodayActive = bedtimeSchedule.scheduleDays.getOrNull(DateTimeUtils.zeroIndexedDayOfWeek()) ?: false
+
+                if (isInBedtimeList && isTodayActive) {
+                    val nowTod = DateTimeUtils.currentTodMinutes()
+                    val start = bedtimeSchedule.scheduleStartTime
+                    val end = (start + bedtimeSchedule.scheduleDurationInMins) % 1440
+
+                    val isBedtimeActiveNow = if (start <= end) {
+                        nowTod in start until end
+                    } else {
+                        // Midnight cross (jaise raat 11 PM se subah 6 AM)
+                        nowTod >= start || nowTod < end
+                    }
+
+                    if (isBedtimeActiveNow) {
+                        Log.d(TAG, "isAppRestricted: Bedtime ACTIVE for package: $packageName")
+                        return RestrictionState(
+                            type = RestrictionType.BEDTIME,
+                            timeLeftMillis = 0L,
+                            screenTimeLimit = 0L,
+                            screenTimeUsed = 1L
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error evaluating live bedtime settings", e)
+        }
+
         // If already restricted by focus or bedtime or cached
         val alreadyRestrictedState = evaluateIfAlreadyRestricted(packageName)
         if (alreadyRestrictedState != null) {
             return alreadyRestrictedState
         }
+
 
         // If no restrictions
         val restriction = appsRestrictions[packageName] ?: return null
