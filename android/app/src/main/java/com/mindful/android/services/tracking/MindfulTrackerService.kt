@@ -34,6 +34,7 @@ class MindfulTrackerService : Service() {
     private val sessionHandler = Handler(Looper.getMainLooper())
     private val allowedUntilMap = HashMap<String, Long>()
     private val sessionStartMap = HashMap<String, Long>()
+    private val launchCooldownMap = HashMap<String, Long>()
     private val allocatedMinutesMap = HashMap<String, Int>()
     private var activePackageName: String? = null
 
@@ -88,6 +89,7 @@ class MindfulTrackerService : Service() {
      * Agar user app chhod kar chala jaye, toh unused minutes quota me wapas adjust karo
      */
     private fun settleUnusedQuota(pkg: String) {
+        launchCooldownMap[pkg] = System.currentTimeMillis()
         val startTime = sessionStartMap.remove(pkg) ?: return
         val allocatedMins = allocatedMinutesMap.remove(pkg) ?: return
         allowedUntilMap.remove(pkg)
@@ -100,6 +102,16 @@ class MindfulTrackerService : Service() {
             Log.d(TAG, "settleUnusedQuota: Refunding $unusedMinutes mins to $pkg (Used $usedMinutes of $allocatedMins mins)")
             // Restriction cache refresh taaki naya accurate balance reflect ho
             restrictionManager.resetCache()
+        }
+    }
+    private fun getCooldownRemainingSeconds(pkg: String): Int {
+        val lastExit = launchCooldownMap[pkg] ?: return 0
+        val elapsed = System.currentTimeMillis() - lastExit
+        // Agar exit ke baad 5 minute (300,000 ms) se kam hua hai, toh 10 second friction penalty
+        return if (elapsed < 5 * 60 * 1000L) {
+            10
+        } else {
+            0
         }
     }
 
@@ -151,10 +163,13 @@ class MindfulTrackerService : Service() {
                 }
 
                 /// 3. GATEKEEPER PROMPT: Har launch pe overlay dikhao aur session maango
+                val cooldownSec = getCooldownRemainingSeconds(packageName)
+
                 overlayManager.dismissSheetOverlay()
                 overlayManager.showSheetOverlay(
                     packageName = packageName,
                     restrictionState = state,
+                    cooldownSeconds = cooldownSec,
                     addReminderWithDelay = { futureMinutes ->
                         val now = System.currentTimeMillis()
                         val sessionDurationMs = futureMinutes * 60 * 1000L
