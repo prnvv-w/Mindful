@@ -44,6 +44,11 @@ class OverlayManager(
     fun dismissSheetOverlay() {
         overlays.pollFirst()?.let { sheetOverlay ->
             ThreadUtils.runOnMainThread {
+
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(null)
+                
                 // Get views
                 val bg = sheetOverlay.findViewById<View>(R.id.overlay_background)
                 val quote = sheetOverlay.findViewById<View>(R.id.overlay_sheet_quote_panel)
@@ -75,6 +80,14 @@ class OverlayManager(
         ThreadUtils.runOnMainThread {
             runCatching {
 
+                // Mute background reel audio instantly
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                @Suppress("DEPRECATION")
+                audioManager.requestAudioFocus(
+                    null,
+                    android.media.AudioManager.STREAM_MUSIC,
+                    android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                )
                 // Notify, stop and return if don't have overlay permission
                 if (!haveOverlayPermission(context)) {
                     return@runOnMainThread
