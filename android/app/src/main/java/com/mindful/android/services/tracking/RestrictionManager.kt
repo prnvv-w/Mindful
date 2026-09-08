@@ -113,20 +113,27 @@ class RestrictionManager(
         }
     }
 
-    private fun evaluateIfAlreadyRestricted(packageName: String): RestrictionState? {
+        private fun evaluateIfAlreadyRestricted(packageName: String): RestrictionState? {
         return when {
-            focusedApps.contains(packageName) -> RestrictionState(
-                type = RestrictionType.FOCUS
-            )
-
             bedtimeApps.contains(packageName) -> RestrictionState(
                 type = RestrictionType.BEDTIME,
+                timeLeftMillis = 0L,
+                screenTimeUsed = 1L,
+                screenTimeLimit = 0L
+            )
+
+            focusedApps.contains(packageName) -> RestrictionState(
+                type = RestrictionType.FOCUS,
+                timeLeftMillis = 0L,
+                screenTimeUsed = 1L,
+                screenTimeLimit = 0L
             )
 
             alreadyRestrictedApps.containsKey(packageName) -> alreadyRestrictedApps[packageName]
             else -> null
         }
     }
+
 
 
     private fun evaluateActivePeriodLimit(
