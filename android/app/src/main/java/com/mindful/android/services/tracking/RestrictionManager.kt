@@ -77,9 +77,9 @@ class RestrictionManager(
     }
 
 
-        // returns nearest time stamp for rechecking
+            // returns nearest time stamp for rechecking
     fun isAppRestricted(packageName: String): RestrictionState? {
-               // 🔥 1. LIVE BEDTIME LIST EVALUATION
+        // 🔥 1. LIVE BEDTIME LIST EVALUATION
         try {
             val bedtimeSchedule = SharedPrefsHelper.getSetBedtimeSettings(context, null)
             if (bedtimeSchedule != null && bedtimeSchedule.isEnabled) {
@@ -95,7 +95,6 @@ class RestrictionManager(
                     val isBedtimeActiveNow = if (start <= end) {
                         nowTod >= start && nowTod < end
                     } else {
-                        // Midnight cross (jaise raat 11 PM se subah 6 AM)
                         nowTod >= start || nowTod < end
                     }
 
@@ -105,24 +104,22 @@ class RestrictionManager(
                             type = RestrictionType.BEDTIME,
                             timeLeftMillis = 0L,
                             screenTimeLimit = 0L,
-                            screenTimeUsed = 1L
-                        )
-                    }
-                }
+                                                screenTimeUsed = 1L
+                )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error evaluating live bedtime settings", e)
         }
+    }
+} catch (e: Exception) {
+    Log.e(TAG, "Error evaluating live bedtime settings", e)
+}
 
-        } catch (e: Exception) {
-            Log.e(TAG, "Error evaluating live bedtime settings", e)
-        }
 
         // If already restricted by focus or bedtime or cached
         val alreadyRestrictedState = evaluateIfAlreadyRestricted(packageName)
         if (alreadyRestrictedState != null) {
             return alreadyRestrictedState
         }
+
 
 
         // If no restrictions
