@@ -138,7 +138,7 @@ object OverlayBuilder {
         limitInfo.text = getRestrictionInfo(context, state)
 
         // Limit progress, and use more layout
-        if (state.screenTimeLimit > 0 && state.screenTimeUsed > 0) {
+        if (state.screenTimeLimit > 0 && state.screenTimeUsed >= 0) {
             // Make limit parent container visible
             val limitContainer =
                 sheetView.findViewById<LinearLayout>(R.id.overlay_sheet_limit_container)
@@ -179,7 +179,7 @@ object OverlayBuilder {
                         20 to R.id.overlay_sheet_reminder_option_btn_twenty_mins
                     ).forEach { (reminder, btnId) ->
                         // Always show 2 minute option if left minutes > 0
-                        if (reminder == 2 || leftLimitMins >= reminder) {
+                        if (leftLimitMins >= reminder) {
                             val button = sheetView.findViewById<Button>(btnId)
                             button.visibility = View.VISIBLE
                             button.setOnClickListener {
