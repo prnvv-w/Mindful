@@ -30,9 +30,12 @@ class MindfulTrackerService : Service() {
     private lateinit var launchTrackingManager: LaunchTrackingManager
     val getLaunchTrackingManager get() = launchTrackingManager
 
-    // 🔥 GATEKEEPER SESSION HANDLER & ACTIVE TIMERS 🔥
+    // 🔥 GATEKEEPER SESSION & QUOTA BURNER TRACKERS 🔥
     private val sessionHandler = Handler(Looper.getMainLooper())
     private val allowedUntilMap = HashMap<String, Long>()
+    private val sessionStartMap = HashMap<String, Long>()
+    private val allocatedMinutesMap = HashMap<String, Int>()
+    private var activePackageName: String? = null
 
     override fun onCreate() {
         overlayManager = OverlayManager(this)
@@ -48,7 +51,6 @@ class MindfulTrackerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-
         if (intent?.action == ServiceBinder.ACTION_START_MINDFUL_SERVICE) {
             startFgService()
             return START_STICKY
@@ -74,8 +76,7 @@ class MindfulTrackerService : Service() {
     }
 
     fun onMidnightReset() {
-        allowedUntilMap.clear()
-        sessionHandler.removeCallbacksAndMessages(null)
+        cleanupAllSessions()
         restrictionManager.resetCache()
         overlayManager.dismissSheetOverlay()
         val reminderAwaiting = reminderManager.cancelReminders()
@@ -83,10 +84,44 @@ class MindfulTrackerService : Service() {
         if (reminderAwaiting) launchTrackingManager.reInvokeLastLaunchEvent()
     }
 
+    /**
+     * Agar user app chhod kar chala jaye, toh unused minutes quota me wapas adjust karo
+     */
+    private fun settleUnusedQuota(pkg: String) {
+        val startTime = sessionStartMap.remove(pkg) ?: return
+        val allocatedMins = allocatedMinutesMap.remove(pkg) ?: return
+        allowedUntilMap.remove(pkg)
+
+        val usedMillis = System.currentTimeMillis() - startTime
+        val usedMinutes = kotlin.math.ceil(usedMillis / 60000.0).toInt()
+        val unusedMinutes = allocatedMins - usedMinutes
+
+        if (unusedMinutes > 0) {
+            Log.d(TAG, "settleUnusedQuota: Refunding $unusedMinutes mins to $pkg (Used $usedMinutes of $allocatedMins mins)")
+            // Restriction cache refresh taaki naya accurate balance reflect ho
+            restrictionManager.resetCache()
+        }
+    }
+
+    private fun cleanupAllSessions() {
+        sessionHandler.removeCallbacksAndMessages(null)
+        allowedUntilMap.clear()
+        sessionStartMap.clear()
+        allocatedMinutesMap.clear()
+        activePackageName = null
+    }
+
     @WorkerThread
     private fun onNewAppLaunch(packageName: String) {
         try {
             reminderManager.cancelReminders()
+
+            // Agar user pichla app chhod kar kisi naye app me aaya hai, quota settle karo
+            if (activePackageName != null && activePackageName != packageName) {
+                settleUnusedQuota(activePackageName!!)
+                sessionHandler.removeCallbacksAndMessages(null)
+            }
+            activePackageName = packageName
 
             val allowedUntil = allowedUntilMap[packageName] ?: 0L
             val isSessionActive = System.currentTimeMillis() < allowedUntil
@@ -110,7 +145,7 @@ class MindfulTrackerService : Service() {
                     return
                 }
 
-                /// 2. ACTIVE SESSION: Agar user ne pehle se 5 ya 10 min select kiya hai aur time chal raha hai
+                /// 2. ACTIVE SESSION: Agar user ne pehle se select kiya hai aur time chal raha hai
                 if (isSessionActive) {
                     return
                 }
@@ -121,12 +156,18 @@ class MindfulTrackerService : Service() {
                     packageName = packageName,
                     restrictionState = state,
                     addReminderWithDelay = { futureMinutes ->
+                        val now = System.currentTimeMillis()
                         val sessionDurationMs = futureMinutes * 60 * 1000L
-                        allowedUntilMap[packageName] = System.currentTimeMillis() + sessionDurationMs
+
+                        sessionStartMap[packageName] = now
+                        allocatedMinutesMap[packageName] = futureMinutes
+                        allowedUntilMap[packageName] = now + sessionDurationMs
 
                         // Timer pura hote hi wapas overlay trigger hoga
                         sessionHandler.postDelayed({
                             allowedUntilMap.remove(packageName)
+                            sessionStartMap.remove(packageName)
+                            allocatedMinutesMap.remove(packageName)
                             onNewAppLaunch(packageName)
                         }, sessionDurationMs)
                     },
@@ -152,8 +193,7 @@ class MindfulTrackerService : Service() {
     }
 
     override fun onDestroy() {
-        allowedUntilMap.clear()
-        sessionHandler.removeCallbacksAndMessages(null)
+        cleanupAllSessions()
         Log.d(TAG, "onDestroy: TRACKER service destroyed successfully")
         super.onDestroy()
     }
