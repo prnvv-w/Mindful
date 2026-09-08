@@ -2,11 +2,14 @@ package com.mindful.android.services.tracking
 
 import android.app.Service
 import android.content.Intent
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.annotation.WorkerThread
 import com.mindful.android.AppConstants
 import com.mindful.android.R
+import com.mindful.android.enums.RestrictionType
 import com.mindful.android.generics.ServiceBinder
 import com.mindful.android.helpers.device.NotificationHelper
 import com.mindful.android.helpers.storage.SharedPrefsHelper
@@ -26,6 +29,10 @@ class MindfulTrackerService : Service() {
 
     private lateinit var launchTrackingManager: LaunchTrackingManager
     val getLaunchTrackingManager get() = launchTrackingManager
+
+    // 🔥 GATEKEEPER SESSION HANDLER & ACTIVE TIMERS 🔥
+    private val sessionHandler = Handler(Looper.getMainLooper())
+    private val allowedUntilMap = HashMap<String, Long>()
 
     override fun onCreate() {
         overlayManager = OverlayManager(this)
@@ -67,40 +74,65 @@ class MindfulTrackerService : Service() {
     }
 
     fun onMidnightReset() {
+        allowedUntilMap.clear()
+        sessionHandler.removeCallbacksAndMessages(null)
         restrictionManager.resetCache()
         overlayManager.dismissSheetOverlay()
         val reminderAwaiting = reminderManager.cancelReminders()
 
-        // Means app is active but timer is not over and now it is reset so re-launch same event again
         if (reminderAwaiting) launchTrackingManager.reInvokeLastLaunchEvent()
     }
-
 
     @WorkerThread
     private fun onNewAppLaunch(packageName: String) {
         try {
             reminderManager.cancelReminders()
-            overlayManager.dismissSheetOverlay()
 
-            /// check current restrictions
+            val allowedUntil = allowedUntilMap[packageName] ?: 0L
+            val isSessionActive = System.currentTimeMillis() < allowedUntil
+
+            /// Check current restrictions
             val currentOrFutureState = restrictionManager.isAppRestricted(packageName)
             Log.d(TAG, "onNewAppLaunch: $packageName's evaluated state => $currentOrFutureState")
 
-            currentOrFutureState?.let {
-                /// Already restricted
-                if (it.timeLeftMillis <= 0L) {
+            currentOrFutureState?.let { state ->
+                /// 1. HARD BLOCK: Bedtime, Focus Mode ya Quota pura 0 ho gaya
+                if (state.type == RestrictionType.BEDTIME ||
+                    state.type == RestrictionType.FOCUS ||
+                    state.timeLeftMillis <= 0L
+                ) {
+                    overlayManager.dismissSheetOverlay()
                     overlayManager.showSheetOverlay(
                         packageName = packageName,
-                        restrictionState = it,
+                        restrictionState = state,
+                        addReminderWithDelay = null, // No timer buttons
                     )
+                    return
                 }
-                /// Under limit but will be exhausted in some time
-                else {
-                    reminderManager.scheduleReminders(
-                        packageName = packageName,
-                        state = it,
-                    )
+
+                /// 2. ACTIVE SESSION: Agar user ne pehle se 5 ya 10 min select kiya hai aur time chal raha hai
+                if (isSessionActive) {
+                    return
                 }
+
+                /// 3. GATEKEEPER PROMPT: Har launch pe overlay dikhao aur session maango
+                overlayManager.dismissSheetOverlay()
+                overlayManager.showSheetOverlay(
+                    packageName = packageName,
+                    restrictionState = state,
+                    addReminderWithDelay = { futureMinutes ->
+                        val sessionDurationMs = futureMinutes * 60 * 1000L
+                        allowedUntilMap[packageName] = System.currentTimeMillis() + sessionDurationMs
+
+                        // Timer pura hote hi wapas overlay trigger hoga
+                        sessionHandler.postDelayed({
+                            allowedUntilMap.remove(packageName)
+                            onNewAppLaunch(packageName)
+                        }, sessionDurationMs)
+                    },
+                )
+            } ?: run {
+                overlayManager.dismissSheetOverlay()
             }
         } catch (e: Exception) {
             SharedPrefsHelper.insertCrashLogToPrefs(this, e)
@@ -120,10 +152,11 @@ class MindfulTrackerService : Service() {
     }
 
     override fun onDestroy() {
+        allowedUntilMap.clear()
+        sessionHandler.removeCallbacksAndMessages(null)
         Log.d(TAG, "onDestroy: TRACKER service destroyed successfully")
         super.onDestroy()
     }
-
 
     override fun onBind(intent: Intent): IBinder? {
         return if (intent.action == ServiceBinder.ACTION_BIND_TO_MINDFUL) mBinder else null
