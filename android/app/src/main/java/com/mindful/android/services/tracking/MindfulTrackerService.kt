@@ -148,7 +148,6 @@ class MindfulTrackerService : Service() {
                     state.type == RestrictionType.FOCUS ||
                     state.timeLeftMillis <= 0L
                 ) {
-                    overlayManager.dismissSheetOverlay()
                     overlayManager.showSheetOverlay(
                         packageName = packageName,
                         restrictionState = state,
