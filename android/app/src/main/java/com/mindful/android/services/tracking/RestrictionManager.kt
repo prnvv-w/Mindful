@@ -79,18 +79,33 @@ class RestrictionManager(
 
             // returns nearest time stamp for rechecking
     fun isAppRestricted(packageName: String): RestrictionState? {
-        // 🔥 1. LIVE BEDTIME LIST EVALUATION
+                // 🔥 1. LIVE BEDTIME LIST EVALUATION
         try {
-            val bedtimeSchedule = SharedPrefsHelper.getSetBedtimeSettings(context, null)
-            if (bedtimeSchedule != null && bedtimeSchedule.isEnabled) {
-                val isInBedtimeList = bedtimeSchedule.distractingApps.contains(packageName)
-                val isTodayActive = bedtimeSchedule.scheduleDays.getOrNull(DateTimeUtils.zeroIndexedDayOfWeek()) ?: false
+            val bedtimeRaw = SharedPrefsHelper.getSetBedtimeSettings(context, null)
+            if (!bedtimeRaw.isNullOrEmpty()) {
+                val json = org.json.JSONObject(bedtimeRaw)
+                val isEnabled = json.optBoolean("isEnabled", false)
+                val appsArray = json.optJSONArray("distractingApps")
+                val scheduleDays = json.optJSONArray("scheduleDays")
+                val dayOfWeek = DateTimeUtils.zeroIndexedDayOfWeek()
+                val isTodayActive = scheduleDays?.optBoolean(dayOfWeek, false) ?: false
 
-                                if (isInBedtimeList && isTodayActive) {
+                var isInBedtimeList = false
+                if (appsArray != null) {
+                    for (i in 0 until appsArray.length()) {
+                        if (appsArray.optString(i) == packageName) {
+                            isInBedtimeList = true
+                            break
+                        }
+                    }
+                }
+
+                if (isEnabled && isInBedtimeList && isTodayActive) {
                     val cal = java.util.Calendar.getInstance()
-                    val nowTod: Int = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-                    val start: Int = bedtimeSchedule.scheduleStartTime.toInt()
-                    val end: Int = (start + bedtimeSchedule.scheduleDurationInMins.toInt()) % 1440
+                    val nowTod = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+                    val start = json.optInt("scheduleStartTime", 0)
+                    val duration = json.optInt("scheduleDurationInMins", 0)
+                    val end = (start + duration) % 1440
 
                     val isBedtimeActiveNow = if (start <= end) {
                         nowTod >= start && nowTod < end
@@ -98,21 +113,20 @@ class RestrictionManager(
                         nowTod >= start || nowTod < end
                     }
 
-
                     if (isBedtimeActiveNow) {
                         Log.d(TAG, "isAppRestricted: Bedtime ACTIVE for package: $packageName")
                         return RestrictionState(
                             type = RestrictionType.BEDTIME,
                             timeLeftMillis = 0L,
                             screenTimeLimit = 0L,
-                                                screenTimeUsed = 1L
-                )
+                            screenTimeUsed = 1L
+                        )
+                    }
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error evaluating live bedtime settings", e)
         }
-    }
-} catch (e: Exception) {
-    Log.e(TAG, "Error evaluating live bedtime settings", e)
-}
 
 
         // If already restricted by focus or bedtime or cached
