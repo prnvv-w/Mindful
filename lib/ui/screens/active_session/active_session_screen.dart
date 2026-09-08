@@ -53,6 +53,7 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
   static const int _secondsInHour = 3600;
   bool _isCompleted = false;
   bool _isPoppingTriggered = false;
+  bool _isTimerShown = false; // 🔥 Ye apna flag hai
 
   @override
   void initState() {
@@ -66,29 +67,6 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
         _launchConfetti();
       },
     );
-
-    // =========================================================
-    // 🔥 APNA SAFE TIMER INJECTION (NO BEDTIME CONFLICT) 🔥
-    // =========================================================
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final session = ref.read(focusModeProvider).activeSession.value;
-      
-      // Check: Agar session type me 'bedtime' ya 'sleep' NAHI hai, toh hi timer dialog dikhao
-      if (session != null && 
-          !session.type.toString().toLowerCase().contains('bedtime') &&
-          !session.type.toString().toLowerCase().contains('sleep')) {
-        
-        showDialog(
-          context: context,
-          barrierDismissible: false, // Screen ke bahar click karke bypass karne ka loophole band
-          builder: (context) => const ActiveTimerDialog(
-            appName: "this App", 
-            remainingQuotaMinutes: 40, // Abhi fallback 40 mins rakha hai testing ke liye
-          ),
-        );
-      }
-    });
-    // =========================================================
   }
 
   /// This callback will be after a frame is rendered only when
@@ -148,6 +126,32 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
         ref.watch(focusModeProvider.select((v) => v.elapsedTimeSec));
 
     final sessionDurationSec = activeSession.value?.durationSecs ?? 0;
+
+    // =========================================================
+    // 🔥 APNA SAFE TIMER INJECTION (NEW LOCATION) 🔥
+    // =========================================================
+    if (activeSession.hasValue && activeSession.value != null && !_isTimerShown) {
+      final session = activeSession.value!;
+      
+      // Bedtime/Sleep check
+      if (!session.type.toString().toLowerCase().contains('bedtime') &&
+          !session.type.toString().toLowerCase().contains('sleep')) {
+        
+        _isTimerShown = true; 
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const ActiveTimerDialog(
+              appName: "App", 
+              remainingQuotaMinutes: 40,
+            ),
+          );
+        });
+      }
+    }
+    // =========================================================
 
     /// Is the session finite means it does have any finite duration
     final isFinite = sessionDurationSec > 0;
@@ -375,3 +379,4 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
         .updateActiveSessionReflection(reflection);
   }
 }
+
