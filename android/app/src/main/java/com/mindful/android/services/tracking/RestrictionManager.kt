@@ -79,57 +79,17 @@ class RestrictionManager(
 
             // returns nearest time stamp for rechecking
     fun isAppRestricted(packageName: String): RestrictionState? {
-                   // 🔥 1. LIVE BEDTIME LIST EVALUATION
-        try {
-            val bedtimeRaw = SharedPrefsHelper.getSetBedtimeSettings(context, null)
-            if (bedtimeRaw != null) {
-                val jsonString: String = bedtimeRaw.toString()
-                if (jsonString.isNotBlank() && jsonString != "null") {
-                    val json = org.json.JSONObject(jsonString)
-                    val isEnabled: Boolean = json.optBoolean("isEnabled", false)
-                    val appsArray = json.optJSONArray("distractingApps")
-                    val scheduleDays = json.optJSONArray("scheduleDays")
-                    val dayOfWeek: Int = DateTimeUtils.zeroIndexedDayOfWeek()
-                    val isTodayActive: Boolean = scheduleDays?.optBoolean(dayOfWeek, false) ?: false
-
-                    var isInBedtimeList = false
-                    if (appsArray != null) {
-                        for (i in 0 until appsArray.length()) {
-                            if (appsArray.optString(i) == packageName) {
-                                isInBedtimeList = true
-                                break
-                            }
-                        }
-                    }
-
-                    if (isEnabled && isInBedtimeList && isTodayActive) {
-                        val cal = java.util.Calendar.getInstance()
-                        val nowTod: Int = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-                        val start: Int = json.optInt("scheduleStartTime", 0)
-                        val duration: Int = json.optInt("scheduleDurationInMins", 0)
-                        val end: Int = (start + duration) % 1440
-
-                        val isBedtimeActiveNow: Boolean = if (start <= end) {
-                            nowTod >= start && nowTod < end
-                        } else {
-                            nowTod >= start || nowTod < end
-                        }
-
-                        if (isBedtimeActiveNow) {
-                            Log.d(TAG, "isAppRestricted: Bedtime ACTIVE for package: $packageName")
-                            return RestrictionState(
-                                type = RestrictionType.BEDTIME,
-                                timeLeftMillis = 0L,
-                                screenTimeLimit = 0L,
-                                screenTimeUsed = 1L
-                            )
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error evaluating live bedtime settings", e)
+                           // 1. Check if app is in active bedtime apps list
+        if (bedtimeApps.contains(packageName)) {
+            Log.d(TAG, "isAppRestricted: Bedtime active for package: $packageName")
+            return RestrictionState(
+                type = RestrictionType.BEDTIME,
+                timeLeftMillis = 0L,
+                screenTimeLimit = 0L,
+                screenTimeUsed = 1L
+            )
         }
+
 
 
 
